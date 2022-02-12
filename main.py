@@ -1,6 +1,7 @@
 import os, time, scratchconnect
 from mcstatus import MinecraftServer
 from dotenv import load_dotenv
+from random import randint
 
 load_dotenv()
 
@@ -12,22 +13,34 @@ project = user.connect_project(project_id=601861832, access_unshared=True)
 variables = project.connect_cloud_variables()
 
 def lookup(server_ip):
-    server = MinecraftServer.lookup(server_ip)
-    status = server.status()
-    query = server.query()
+    try:
+        server = MinecraftServer.lookup(server_ip)
+        status = server.status()
+        query = server.query()
     
-    return server.host, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency, query.motd, query.players.names
+        return randint(0, 10000), server.host, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency, query.motd, query.players.names
+    except:
+        try:
+            server = MinecraftServer.lookup(server_ip)
+            status = server.status()
+            
+            return randint(0, 10000), server.host, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency
+        except:
+            return "Error"
 
-last_ip = None
-while True:
-    request = variables.get_cloud_variable_value(variable_name="request", limit=1)  # Returns the cloud variable value
-    server_ip = variables.decode(request[0]) #decode first item on the list response
-    #print(server_ip)
-    if server_ip != last_ip:
-        print(lookup(server_ip))
-        last_ip = server_ip
-    else:
-        print("The requested IP has not changed since last ping!")
-    # Program to set cloud variables:
-    #set = variables.set_cloud_variable(variable_name="Name", value=123)  # Set a Cloud Variable
-    time.sleep(5)
+event = variables.start_event(update_time=5)  # Start a cloud event loop to check events. Use the 'update_time' parameter to wait for that number of seconds and then update the data.
+
+@variables.event.on('change')
+def do_something(**data):
+    print(data['variable_name'])
+    variables = project.connect_cloud_variables()
+    if data['variable_name'] == '☁ request':
+        server_ip = variables.decode(data['value'])
+        response = lookup(server_ip)
+        if response == "Error":
+            variables.set_cloud_variable(variable_name="response", value=404)
+            print("Response error sent")
+        else:
+            set = variables.set_cloud_variable(variable_name="response", value=variables.encode_list(list(response)))
+            if set:
+                print("Response sent!")
