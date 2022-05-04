@@ -48,13 +48,12 @@ def lookup(server_ip):
 
 event = variables.start_event(update_time=5)  # Start a cloud event loop to check events. Use the 'update_time' parameter to wait for that number of seconds and then update the data.
 
-last_request = '0'
 while True:
 
     variables = project.connect_cloud_variables()
     request = variables.get_cloud_variable_value(variable_name='request')[0]
 
-    if request != '0':
+    if request != '1':
         if request == '2':
             print('No new requests.')
 
@@ -70,7 +69,12 @@ while True:
                 set = variables.set_cloud_variable(variable_name="response", value=variables.encode_list(list(response[0:5])))
                 set = variables.set_cloud_variable(variable_name="modt", value=variables.encode(response[5]))
                 set = variables.set_cloud_variable(variable_name="playersample", value=variables.encode(response[6]))
-
+                
                 if set:
                     print("Response sent!")
+                    set = variables.set_cloud_variable(variable_name='request', value='2')
+
+                    if set:
+                        print("Process reset")
+
         time.sleep(7) #delay between requests in secs
