@@ -45,11 +45,8 @@ def lookup(server_ip):
             return randint(0, 10000), server_ip, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency
         except:
             return "Error"
-
-event = variables.start_event(update_time=5)  # Start a cloud event loop to check events. Use the 'update_time' parameter to wait for that number of seconds and then update the data.
-
+        
 while True:
-
     variables = project.connect_cloud_variables()
     request = variables.get_cloud_variable_value(variable_name='request')[0]
 
