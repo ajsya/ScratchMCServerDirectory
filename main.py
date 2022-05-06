@@ -1,86 +1,86 @@
-#v2 rewritten for scratchconnect in order to use list encryption
+#self-hosting guide: https://gist.github.com/emxsys/a507f3cad928e66f6410e7ac28e2990f
 
-import requests
-import scratchconnect
+import os, time, json, scratchconnect
+from mcstatus import JavaServer
 from dotenv import load_dotenv
-import os
-import time
-import random
+from random import randint
 
 load_dotenv()
 
-API_KEY = os.environ['API_KEY']
 username = os.environ['USERNAME']
 password = os.environ['PASSWORD']
 
 user = scratchconnect.ScratchConnect(username, password)
-project = user.connect_project(596980037)  # Connect the project
+project = user.connect_project(project_id=684696037)
+variables = project.connect_cloud_variables()
 
-def getWeather(city):
-    api = "https://api.openweathermap.org/data/2.5/weather?q="+city+"&units=imperial&appid="+API_KEY
-    r = requests.get(api)
-    if r.status_code == 200:
-        data = r.json()
+def lookup(server_ip):
+    try:
+        server = JavaServer(server_ip)
+        status = server.status()
+        #query = server.query()
 
-        # at a quick glance
-        location = data['name']
-        condition = data['weather'][0]['main']
-        description = data['weather'][0]['description']
+        modt = status.description
+        description = modt.translate({ ord(c): None for c in "§\n" })
 
-        # right now
-        temperature = data['main']['temp'] #temperature in fahrenheit
-        feels_like_temperature = data['main']['feels_like']
+        raw = status.raw
+        rawjson = json.dumps(raw)
+        rawdata = json.loads(str(rawjson))
 
-        #today
-        max_temperature = data['main']['temp_max']
-        min_temperature = data['main']['temp_min']
-        humidity = data['main']['humidity'] # should be a percent
-        cloud_coverage = data['clouds']['all'] # should be a percent
+        players = []
+        for name in rawdata['players']['sample']:
+            print(name['name'])
+            players.append(name['name'])
+        print(players)
+        players1 = players[0:6]
+        playersample=' '.join([str(item) for item in players1])
+        print(playersample)
+    
+        return randint(0, 10000), server_ip, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency, description, playersample
+    except:
+        try:
+            server = MinecraftServer.lookup(server_ip)
+            status = server.status()
 
-        return location, condition, description, temperature, feels_like_temperature, max_temperature, min_temperature, humidity, cloud_coverage
-    elif r.status_code == 404:
-        print("Requested location not found!")
+            return randint(0, 10000), server_ip, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency
+        except:
+            return "Error"
 
-        return "Location Not Found"
-
-RandomLocations = ['Toledo', 'Detriot', 'Columbus', 'Cleveland', 'Miami', 'Olympia', 'Washington DC', 'Boston', 'Kansas City', 'Orlando']
 while True:
-    variables = project.connect_cloud_variables()
-    request = variables.get_cloud_variable_value(variable_name='request')[0]
-    #print(request)
-    if request != '1':
-        if request == '2':
-            print('No new requests.')
-        elif request == '3':
-            print("New request intetified; Random Location.")
-            weather = getWeather(random.choice(RandomLocations))
-            print(weather)
-            if weather == "Location Not Found":
-                variables.set_cloud_variable(variable_name='request', value='2')
-                print("Response submited: Location not Found; Code 2")
+    try:
+        variables = project.connect_cloud_variables()
+        request = variables.get_cloud_variable_value(variable_name='request')[0]
+
+        if request != '1':
+            if request == '2':
+                print('No new requests.')
+
             else:
-                encoded = variables.encode_list(list(weather))
-                variables.set_cloud_variable(variable_name='response', value=encoded)
+                server_ip = variables.decode(request)
+                response = lookup(server_ip)
+                if response == "Error":
+                    set = variables.set_cloud_variable(variable_name="response", value=404)
+                    if set:
+                        print("Error response sent")
+                        set = variables.set_cloud_variable(variable_name='request', value='2')
 
-                variables.set_cloud_variable(variable_name='request', value='1')
-                print("Response Submited: Date sent; Code 1")
-        else:    
-            print("New request intetified.")
-            location = variables.decode(request)
-            #print(location)
-            #location, condition, description, temperature, feels_like_temperature, max_temperature, min_temperature, humidity, cloud_coverage = getWeather(decoded_request)
-            weather = getWeather(location)
-            print(weather)
-            if weather == "Location Not Found":
-                variables.set_cloud_variable(variable_name='request', value='2')
-                print("Response submited: Location not Found; Code 2")
-            else:
-                encoded = variables.encode_list(list(weather))
-                variables.set_cloud_variable(variable_name='response', value=encoded)
+                        if set:
+                            print("Process reset")
+                else:
+                    print(response) #response object needs to be sent in two pieces to avoid scratch cloud character limit
+                    print(variables.encode_list(list(response)))
+                    set = variables.set_cloud_variable(variable_name="response", value=variables.encode_list(list(response[0:5])))
+                    set = variables.set_cloud_variable(variable_name="modt", value=variables.encode(response[5]))
+                    set = variables.set_cloud_variable(variable_name="playersample", value=variables.encode(response[6]))
+                
+                    if set:
+                        print("Response sent!")
+                        set = variables.set_cloud_variable(variable_name='request', value='2')
 
-                variables.set_cloud_variable(variable_name='request', value='1')
-                print("Response Submited: Date sent; Code 1")
+                        if set:
+                            print("Process reset")
+    except Exception as e:
+        print("An error occured")
+        print(e)
 
-    else:
-        print('No new requests.')
-    time.sleep(10) 
+        time.sleep(7) #delay between requests in secs
