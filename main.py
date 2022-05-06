@@ -39,7 +39,7 @@ def lookup(server_ip):
         return randint(0, 10000), server_ip, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency, description, playersample
     except:
         try:
-            server = MinecraftServer.lookup(server_ip)
+            server = JavaServer.lookup(server_ip)
             status = server.status()
 
             return randint(0, 10000), server_ip, "{0}/{1}".format(status.players.online, status.players.max), status.version.name, status.latency
