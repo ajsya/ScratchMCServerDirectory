@@ -1,18 +1,21 @@
 #self-hosting guide: https://gist.github.com/emxsys/a507f3cad928e66f6410e7ac28e2990f
+#updated to use scratchcloud
 
-import os, time, json, scratchconnect
+from scratchcloud import CloudClient, CloudChange
+import scEncoder
+import os, time, json
 from mcstatus import JavaServer
 from dotenv import load_dotenv
 from random import randint
 
+#get .env passcodes
 load_dotenv()
-
 username = os.environ['USERNAME']
 password = os.environ['PASSWORD']
 
-user = scratchconnect.ScratchConnect(username, password)
-project = user.connect_project(project_id=684696037)
-variables = project.connect_cloud_variables()
+client = CloudClient(username=username, project_id='690926913')
+encoder = scEncoder.Encoder()
+chars = scEncoder.ALL_CHARS
 
 def lookup(server_ip):
     try:
@@ -21,7 +24,9 @@ def lookup(server_ip):
         #query = server.query()
 
         modt = status.description
-        description = modt.translate({ ord(c): None for c in "§\n" })
+        print(modt)
+        description = ''.join([i for i in modt if i in chars])
+        print(description)
 
         raw = status.raw
         rawjson = json.dumps(raw)
@@ -46,41 +51,31 @@ def lookup(server_ip):
         except:
             return "Error"
 
-while True:
-    try:
-        variables = project.connect_cloud_variables()
-        request = variables.get_cloud_variable_value(variable_name='request')[0]
+@client.event
+async def on_connect():
+  print('Project connected.')
 
-        if request != '1':
-            if request == '2':
-                print('No new requests.')
+@client.event
+async def on_disconnect():
+  print('Project disconnected!')
 
-            else:
-                server_ip = variables.decode(request)
-                response = lookup(server_ip)
-                if response == "Error":
-                    set = variables.set_cloud_variable(variable_name="response", value=404)
-                    if set:
-                        print("Error response sent")
-                        set = variables.set_cloud_variable(variable_name='request', value='2')
+@client.cloud_event('REQUEST')
+async def on_request(var: CloudChange):
+  print(f'The {var.name} variable was changed to {var.value}!')
+  server_ip = encoder.decode(var.value)
+  response = lookup(server_ip)
 
-                        if set:
-                            print("Process reset")
-                else:
-                    print(response) #response object needs to be sent in two pieces to avoid scratch cloud character limit
-                    print(variables.encode_list(list(response)))
-                    set = variables.set_cloud_variable(variable_name="response", value=variables.encode_list(list(response[0:5])))
-                    set = variables.set_cloud_variable(variable_name="modt", value=variables.encode(response[5]))
-                    set = variables.set_cloud_variable(variable_name="playersample", value=variables.encode(response[6]))
-                
-                    if set:
-                        print("Response sent!")
-                        set = variables.set_cloud_variable(variable_name='request', value='2')
+  if response == "Error":
+    await client.set_cloud('RESPONSE', '400')
+    print("Error response sent")
+    await client.set_cloud('REQUEST', '400')
 
-                        if set:
-                            print("Process reset")
-    except Exception as e:
-        print("An error occured")
-        print(e)
+  else:
+    print(response) #response object needs to be sent in two pieces to avoid scratch cloud character limit
+    print(encoder.encode_list(list(response)))
+    await client.set_cloud('RESPONSE', encoder.encode_list(list(response[0:5])))
+    await client.set_cloud('modt', encoder.encode(response[5]))
+    await client.set_cloud('playersample', encoder.encode(response[6]))
+    await client.set_cloud('REQUEST', '200')
 
-        time.sleep(7) #delay between requests in secs
+client.run(password)
